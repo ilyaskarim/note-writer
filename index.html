@@ -8,24 +8,34 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-
-    <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Tailwind CSS -->
+    <script src="scripts/tailwind.js"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
                         jb: {
-                            bg: '#2b2b2b',       
-                            sidebar: '#313335',  
-                            header: '#3c3f41',   
-                            text: '#a9b7c6',     
-                            border: '#323232',   
-                            accent: '#365880',   
-                            hover: '#4b6eaf',    
+                            bg: '#2b2b2b',
+                            sidebar: '#313335',
+                            header: '#3c3f41',
+                            text: '#a9b7c6',
+                            border: '#323232',
+                            accent: '#365880',
+                            hover: '#4b6eaf',
                             listHover: '#2d2f30',
-                            active: '#4b6eaf'    
+                            active: '#4b6eaf',
+                            success: '#629755'
+                        }
+                    },
+                    animation: {
+                        'modal-in': 'modal-in 0.2s ease-out'
+                    },
+                    keyframes: {
+                        'modal-in': {
+                            '0%': { opacity: '0', transform: 'scale(0.95) translateY(-10px)' },
+                            '100%': { opacity: '1', transform: 'scale(1) translateY(0)' }
                         }
                     },
                     fontFamily: {
@@ -35,330 +45,169 @@
             }
         }
     </script>
-
-    <style>
-        body { font-family: 'JetBrains Mono', monospace; }
-        
-        #sidebar { transition: margin-left 0.3s ease-in-out; }
-        .sidebar-closed { margin-left: -16rem; }
-        .sidebar-open { margin-left: 0; }
-
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #2b2b2b; }
-        ::-webkit-scrollbar-thumb { background: #4e4e4e; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #5e5e5e; }
-    </style>
+    
+    <link rel="stylesheet" href="css/style.css">
 </head>
-<body class="h-screen w-screen flex overflow-hidden bg-jb-bg text-jb-text text-sm">
-
-    <div id="sidebar" class="w-64 bg-jb-sidebar border-r border-jb-border flex flex-col sidebar-closed z-20 flex-shrink-0 relative shadow-xl">
-        <div class="h-[45px] flex items-center px-4 border-b border-jb-border font-bold text-xs tracking-wide bg-jb-header select-none">
-            DOCUMENTS
-        </div>
-        
-        <ul id="doc-list" class="flex-1 overflow-y-auto">
+<body class="h-screen w-screen overflow-hidden bg-jb-bg text-jb-text text-sm font-mono">
+    <div id="app" class="flex h-full w-full">
+        <!-- Sidebar -->
+        <aside 
+            :class="[
+                'w-64 bg-jb-sidebar border-r border-jb-border flex flex-col flex-shrink-0 relative z-20 shadow-xl transition-all duration-300',
+                sidebarOpen ? 'ml-0' : '-ml-64'
+            ]"
+        >
+            <div class="h-[45px] flex items-center px-4 border-b border-jb-border font-bold text-xs tracking-wide bg-jb-header select-none">
+                DOCUMENTS
+            </div>
+            
+            <ul class="flex-1 overflow-y-auto">
+                <li 
+                    v-for="doc in sortedDocs" 
+                    :key="doc.id"
+                    :class="[
+                        'group relative px-4 py-3 cursor-pointer border-b border-jb-border text-xs flex flex-col gap-1 transition-colors',
+                        doc.id === currentDocId 
+                            ? 'bg-jb-active text-white' 
+                            : 'hover:bg-jb-listHover text-jb-text'
+                    ]"
+                    @click="switchDocument(doc.id)"
+                >
+                    <div class="font-medium truncate pr-6">{{ getDisplayTitle(doc) }}</div>
+                    <span class="text-[10px] opacity-70">{{ formatDate(doc.createdAt) }}</span>
+                    <div 
+                        class="absolute right-2 top-3 hidden group-hover:flex items-center justify-center text-gray-400 hover:text-red-400 p-1 rounded hover:bg-[#252526] transition-all"
+                        @click.stop="deleteDocument(doc.id)"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                    </div>
+                </li>
             </ul>
 
-        <button id="newDocBtn" class="w-full py-3 bg-jb-accent text-white hover:bg-jb-hover border-t border-jb-border transition-colors text-xs font-bold">
-            + NEW DOCUMENT
-        </button>
-    </div>
+            <button 
+                class="w-full py-3 bg-jb-accent text-white hover:bg-jb-hover border-t border-jb-border transition-colors text-xs font-bold"
+                @click="createNewDocument"
+            >
+                + NEW DOCUMENT
+            </button>
+        </aside>
 
-    <div class="flex-1 flex flex-col min-w-0">
-        
-        <div class="h-[45px] bg-jb-header border-b border-jb-border flex items-center px-4 gap-3">
-            <button id="menu-toggle" class="text-jb-text hover:text-white text-xl focus:outline-none transition-colors">
-                ☰
-            </button>
-            
-            <input type="text" id="doc-title-input" 
-                   class="bg-jb-bg border border-[#646464] text-jb-text text-sm px-2 py-1 rounded w-64 focus:border-jb-accent focus:outline-none transition-colors placeholder-gray-500"
-                   placeholder="Untitled Document">
-            
-            <div class="flex-1"></div>
-            
-            <span id="status-msg" class="text-xs text-gray-500 hidden sm:block"></span>
-            
-            <button id="saveBtn" class="bg-jb-accent hover:bg-jb-hover text-white border border-[#4c7095] px-3 py-1 rounded text-xs transition-colors shadow-sm">
-                Save
-            </button>
-            
-            <button id="copyBtn" class="bg-jb-accent hover:bg-jb-hover text-white border border-[#4c7095] px-3 py-1 rounded text-xs transition-colors shadow-sm">
-                Copy Prompt
-            </button>
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col min-w-0">
+            <!-- Header -->
+            <header class="h-[45px] bg-jb-header border-b border-jb-border flex items-center px-4 gap-3">
+                <button 
+                    class="text-jb-text hover:text-white text-xl focus:outline-none transition-colors"
+                    @click="toggleSidebar"
+                >
+                    ☰
+                </button>
+                
+                <input 
+                    type="text" 
+                    v-model="docTitle"
+                    class="bg-jb-bg border border-[#646464] text-jb-text text-sm px-2 py-1 rounded w-64 focus:border-jb-accent focus:outline-none transition-colors placeholder-gray-500"
+                    placeholder="Untitled Document"
+                    @blur="saveCurrentDocument(true)"
+                    @keydown.enter="onTitleEnter"
+                >
+                
+                <div class="flex-1"></div>
+                
+                <span class="text-xs text-gray-500 hidden sm:block">{{ statusMessage }}</span>
+                
+                <button 
+                    class="bg-jb-accent hover:bg-jb-hover text-white border border-[#4c7095] px-3 py-1 rounded text-xs transition-colors shadow-sm"
+                    @click="saveCurrentDocument(true)"
+                >
+                    Save
+                </button>
+                
+                <button 
+                    :class="[
+                        'px-3 py-1 rounded text-xs transition-colors shadow-sm text-white border',
+                        copied 
+                            ? 'bg-jb-success border-jb-success' 
+                            : 'bg-jb-accent hover:bg-jb-hover border-[#4c7095]'
+                    ]"
+                    @click="copyPrompt"
+                >
+                    {{ copied ? 'Copied!' : 'Copy Prompt' }}
+                </button>
+            </header>
+
+            <!-- Editor -->
+            <div id="editor-container" class="flex-1 overflow-hidden relative"></div>
         </div>
 
-        <div id="editor-container" class="flex-1 overflow-hidden relative"></div>
+        <!-- Delete Confirmation Modal -->
+        <Transition name="modal">
+            <div 
+                v-if="showDeleteModal" 
+                class="fixed inset-0 z-50 flex items-center justify-center"
+                @click.self="cancelDelete"
+            >
+                <!-- Backdrop -->
+                <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+                
+                <!-- Modal -->
+                <div class="relative bg-jb-sidebar border border-jb-border rounded-lg shadow-2xl w-[400px] overflow-hidden animate-modal-in">
+                    <!-- Header -->
+                    <div class="flex items-center gap-3 px-5 py-4 border-b border-jb-border bg-jb-header">
+                        <div class="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-white font-bold text-sm">Delete Document</h3>
+                            <p class="text-jb-text text-xs opacity-70">This action cannot be undone</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Body -->
+                    <div class="px-5 py-4">
+                        <p class="text-jb-text text-sm leading-relaxed">
+                            Are you sure you want to delete 
+                            <span class="text-white font-medium">"{{ deleteDocTitle }}"</span>? 
+                            This document will be permanently removed.
+                        </p>
+                    </div>
+                    
+                    <!-- Footer -->
+                    <div class="flex justify-end gap-3 px-5 py-4 border-t border-jb-border bg-jb-bg/50">
+                        <button 
+                            class="px-4 py-2 rounded text-sm text-jb-text hover:text-white hover:bg-jb-listHover border border-jb-border transition-all"
+                            @click="cancelDelete"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            class="px-4 py-2 rounded text-sm text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-all shadow-lg shadow-red-500/20"
+                            @click="confirmDelete"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-
-    <script>
-        // --- State ---
-        let currentDocId = null;
-        let editorInstance = null;
-        const SIDEBAR_EL = document.getElementById('sidebar');
-
-        // --- LocalStorage Logic ---
-        function getDocs() {
-            try {
-                const docs = localStorage.getItem('jb_prompts_docs');
-                return docs ? JSON.parse(docs) : [];
-            } catch(e) { return []; }
-        }
-
-        function saveDocsToStorage(docs) {
-            localStorage.setItem('jb_prompts_docs', JSON.stringify(docs));
-        }
-
-        // --- Sidebar Logic ---
-        function loadSidebar() {
-            const list = document.getElementById('doc-list');
-            list.innerHTML = '';
-            
-            const docs = getDocs().sort((a, b) => b.createdAt - a.createdAt);
-
-            docs.forEach(doc => {
-                const li = document.createElement('li');
-                
-                // Base classes
-                let classes = "group relative px-4 py-3 cursor-pointer border-b border-jb-border text-xs flex flex-col gap-1 transition-colors";
-                
-                // Active vs Inactive styles
-                if (doc.id === currentDocId) {
-                    classes += " bg-jb-active text-white";
-                } else {
-                    classes += " hover:bg-jb-listHover text-jb-text";
-                }
-                li.className = classes;
-                
-                // Click to switch
-                li.onclick = () => switchDocument(doc.id);
-                
-                // Title - show first 50 chars of content
-                const titleSpan = document.createElement('div');
-                titleSpan.className = "font-medium truncate pr-6"; // pr-6 to make room for delete icon
-                let displayTitle = "Untitled Document";
-                const defaultContent = "Write something...";
-                if (doc.content && doc.content.trim() && doc.content !== defaultContent) {
-                    displayTitle = doc.content.substring(0, 50).replace(/\n/g, ' ').trim();
-                    if (doc.content.length > 50) displayTitle += '...';
-                }
-                titleSpan.textContent = displayTitle;
-                
-                // Date
-                const dateSpan = document.createElement('span');
-                dateSpan.className = "text-[10px] opacity-70";
-                dateSpan.textContent = new Date(doc.createdAt).toLocaleString();
-
-                // Delete Button (Hidden by default, shown on group-hover)
-                const deleteBtn = document.createElement('div');
-                deleteBtn.className = "absolute right-2 top-3 hidden group-hover:flex items-center justify-center text-gray-400 hover:text-red-400 p-1 rounded hover:bg-[#252526] transition-all";
-                deleteBtn.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="3 6 5 6 21 6"></polyline>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                    </svg>
-                `;
-                
-                // Delete Event
-                deleteBtn.onclick = (e) => {
-                    e.stopPropagation(); // Prevent switching doc
-                    deleteDocument(doc.id);
-                };
-
-                li.appendChild(titleSpan);
-                li.appendChild(dateSpan);
-                li.appendChild(deleteBtn);
-                list.appendChild(li);
-            });
-        }
-
-        function createNewDocument() {
-            const newDoc = {
-                id: Date.now().toString(),
-                title: "",
-                content: "Write something...",
-                createdAt: Date.now()
-            };
-            
-            const docs = getDocs();
-            docs.push(newDoc);
-            saveDocsToStorage(docs);
-            switchDocument(newDoc.id);
-        }
-
-        function deleteDocument(id) {
-            if(!confirm("Are you sure you want to delete this document?")) return;
-
-            let docs = getDocs();
-            docs = docs.filter(d => d.id !== id);
-            saveDocsToStorage(docs);
-
-            // If we deleted the currently active doc, switch to another one
-            if (id === currentDocId) {
-                if (docs.length > 0) {
-                    switchDocument(docs[0].id);
-                } else {
-                    // If no docs left, create a new blank one
-                    createNewDocument();
-                    return; 
-                }
-            } else {
-                // If we deleted a background doc, just refresh sidebar
-                loadSidebar();
-            }
-        }
-
-        function switchDocument(id) {
-            if (currentDocId && editorInstance) {
-                // Save old doc state before switching
-                const content = editorInstance.getValue();
-                const title = document.getElementById('doc-title-input').value;
-                const docs = getDocs();
-                const index = docs.findIndex(d => d.id === currentDocId);
-                if (index !== -1) {
-                    docs[index].content = content;
-                    docs[index].title = title;
-                    saveDocsToStorage(docs);
-                }
-            }
-
-            const docs = getDocs();
-            const doc = docs.find(d => d.id === id);
-            
-            if (doc) {
-                currentDocId = doc.id;
-                document.getElementById('doc-title-input').value = doc.title;
-                if (editorInstance) editorInstance.setValue(doc.content);
-                loadSidebar(); 
-            }
-        }
-
-        function saveCurrentDocument(showStatus = true) {
-            if (!currentDocId || !editorInstance) return;
-
-            const content = editorInstance.getValue();
-            const title = document.getElementById('doc-title-input').value;
-
-            const docs = getDocs();
-            const index = docs.findIndex(d => d.id === currentDocId);
-
-            if (index !== -1) {
-                docs[index].content = content;
-                docs[index].title = title;
-                saveDocsToStorage(docs);
-                
-                // Refresh sidebar to update title if changed
-                loadSidebar(); 
-
-                if (showStatus) {
-                    const status = document.getElementById('status-msg');
-                    status.innerText = "Saved " + new Date().toLocaleTimeString();
-                    setTimeout(() => status.innerText = "", 2000);
-                }
-            }
-        }
-
-        // --- Monaco Initialization ---
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
-
-        require(['vs/editor/editor.main'], function() {
-            
-            monaco.editor.defineTheme('jetbrains-darcula', {
-                base: 'vs-dark',
-                inherit: true,
-                rules: [
-                    { token: 'keyword.md', foreground: 'CC7832', fontStyle: 'bold' },
-                    { token: 'strong.md', foreground: 'CC7832', fontStyle: 'bold' },
-                    { token: 'string.md', foreground: '6A8759' },
-                    { token: 'link.md', foreground: '287BDE' },
-                ],
-                colors: {
-                    'editor.background': '#2b2b2b',
-                    'editor.foreground': '#a9b7c6',
-                    'editor.lineHighlightBackground': '#323232',
-                    'editorCursor.foreground': '#bbbbbb',
-                }
-            });
-
-            editorInstance = monaco.editor.create(document.getElementById('editor-container'), {
-                value: '', 
-                language: 'markdown',
-                theme: 'jetbrains-darcula',
-                fontSize: 16,
-                fontFamily: "'JetBrains Mono', 'Menlo', monospace",
-                fontLigatures: true,
-                wordWrap: 'on',
-                minimap: { enabled: false },
-                automaticLayout: true,
-                padding: { top: 20, bottom: 20 },
-                lineNumbers: 'on',
-            });
-
-            // Update sidebar title on content change
-            editorInstance.onDidChangeModelContent(() => {
-                if (currentDocId) {
-                    const docs = getDocs();
-                    const index = docs.findIndex(d => d.id === currentDocId);
-                    if (index !== -1) {
-                        docs[index].content = editorInstance.getValue();
-                        saveDocsToStorage(docs);
-                        loadSidebar();
-                    }
-                }
-            });
-
-            // Initial Load
-            const docs = getDocs();
-            if (docs.length === 0) createNewDocument();
-            else switchDocument(docs[0].id);
-
-            // --- Event Listeners ---
-            
-            document.getElementById('menu-toggle').addEventListener('click', () => {
-                if (SIDEBAR_EL.classList.contains('sidebar-closed')) {
-                    SIDEBAR_EL.classList.remove('sidebar-closed');
-                    SIDEBAR_EL.classList.add('sidebar-open');
-                } else {
-                    SIDEBAR_EL.classList.remove('sidebar-open');
-                    SIDEBAR_EL.classList.add('sidebar-closed');
-                }
-            });
-
-            document.getElementById('newDocBtn').addEventListener('click', createNewDocument);
-            document.getElementById('saveBtn').addEventListener('click', () => saveCurrentDocument(true));
-
-            document.getElementById('copyBtn').addEventListener('click', function() {
-                const value = editorInstance.getValue();
-                navigator.clipboard.writeText(value).then(() => {
-                    const btn = document.getElementById('copyBtn');
-                    const originalText = btn.innerText;
-                    btn.innerText = "Copied!";
-                    btn.classList.remove('bg-jb-accent');
-                    btn.classList.add('bg-[#629755]', 'border-[#629755]');
-                    
-                    setTimeout(() => {
-                        btn.innerText = originalText;
-                        btn.classList.remove('bg-[#629755]', 'border-[#629755]');
-                        btn.classList.add('bg-jb-accent');
-                    }, 2000);
-                });
-            });
-
-            // Auto Save Loop (5s)
-            setInterval(() => saveCurrentDocument(true), 5000);
-
-            // Input Handling
-            const titleInput = document.getElementById('doc-title-input');
-            titleInput.addEventListener('blur', () => saveCurrentDocument(true));
-            titleInput.addEventListener('keydown', (e) => {
-                if(e.key === 'Enter') {
-                    saveCurrentDocument(true);
-                    editorInstance.focus();
-                }
-            });
-        });
-    </script>
+    <!-- Monaco Editor -->
+    <script src="scripts/monaco/vs/loader.min.js"></script>
+    
+    <!-- Vue.js -->
+    <script src="scripts/vue.global.js"></script>
+    
+    <!-- App -->
+    <script src="js/app.js"></script>
 </body>
 </html>
