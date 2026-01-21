@@ -9,6 +9,8 @@ const app = createApp({
         const statusMessage = ref('');
         const copied = ref(false);
         const docs = ref([]);
+        const isDraftDocument = ref(false);
+        let isInitializingDraft = false;
         
         // Delete modal state
         const showDeleteModal = ref(false);
@@ -49,6 +51,17 @@ const app = createApp({
 
         function formatDate(timestamp) {
             return new Date(timestamp).toLocaleString();
+        }
+
+        function setupDraftDocument() {
+            currentDocId.value = null;  // No document selected
+            docTitle.value = '';
+            isDraftDocument.value = true;
+            if (editorInstance) {
+                isInitializingDraft = true;
+                editorInstance.setValue('Write something...');
+                isInitializingDraft = false;
+            }
         }
 
         // Sidebar
@@ -93,19 +106,15 @@ const app = createApp({
             saveDocsToStorage();
 
             if (id === currentDocId.value) {
-                if (docs.value.length > 0) {
-                    switchDocument(docs.value[0].id);
-                } else {
-                    createNewDocument();
-                }
+                setupDraftDocument();
             }
 
             cancelDelete();
         }
 
         function switchDocument(id) {
-            // Save current doc before switching
-            if (currentDocId.value && editorInstance) {
+            // Save current doc before switching (only if it's not a draft)
+            if (currentDocId.value && !isDraftDocument.value && editorInstance) {
                 const content = editorInstance.getValue();
                 const index = docs.value.findIndex(d => d.id === currentDocId.value);
                 if (index !== -1) {
@@ -119,6 +128,7 @@ const app = createApp({
             if (doc) {
                 currentDocId.value = doc.id;
                 docTitle.value = doc.title;
+                isDraftDocument.value = false;
                 if (editorInstance) {
                     editorInstance.setValue(doc.content);
                 }
@@ -126,7 +136,7 @@ const app = createApp({
         }
 
         function saveCurrentDocument(showStatus = true) {
-            if (!currentDocId.value || !editorInstance) return;
+            if (isDraftDocument.value || !currentDocId.value || !editorInstance) return;
 
             const content = editorInstance.getValue();
             const index = docs.value.findIndex(d => d.id === currentDocId.value);
@@ -214,7 +224,23 @@ const app = createApp({
 
                 // Listen for content changes
                 editorInstance.onDidChangeModelContent(() => {
-                    if (currentDocId.value) {
+                    // Ignore changes during draft initialization
+                    if (isInitializingDraft) return;
+                    
+                    if (isDraftDocument.value) {
+                        // First edit - create the real document
+                        const newDoc = {
+                            id: Date.now().toString(),
+                            title: docTitle.value,
+                            content: editorInstance.getValue(),
+                            createdAt: Date.now()
+                        };
+                        docs.value.push(newDoc);
+                        currentDocId.value = newDoc.id;
+                        isDraftDocument.value = false;
+                        saveDocsToStorage();
+                    } else if (currentDocId.value) {
+                        // Normal save for existing document
                         const index = docs.value.findIndex(d => d.id === currentDocId.value);
                         if (index !== -1) {
                             docs.value[index].content = editorInstance.getValue();
@@ -223,14 +249,10 @@ const app = createApp({
                     }
                 });
 
-                // Load initial docs
+                // Load existing docs into sidebar
                 docs.value = getDocs();
-                
-                if (docs.value.length === 0) {
-                    createNewDocument();
-                } else {
-                    switchDocument(docs.value[0].id);
-                }
+                // Always start with a fresh draft
+                setupDraftDocument();
 
                 // Auto-save every 5 seconds
                 setInterval(() => saveCurrentDocument(true), 5000);
